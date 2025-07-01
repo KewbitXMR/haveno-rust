@@ -1,3 +1,4 @@
-# rust-basic-node
+# SmartDEX
+A decentralized application for exposing P2P trading offers, easy to use, free and safe with Arbitration via AI LLMs, all with the privacy ofr Tor and Monero.
 
-A basic rust client to get some information from Haveno networks
+Built with ❤️ in rust by **[Kewbit](https://kewbit.org)** from [Haveno App](https://haveno.com).
