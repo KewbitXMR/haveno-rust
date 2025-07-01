@@ -1,0 +1,33 @@
+[package]
+name = "haveno_basic_bootstrap"
+version = "0.1.0"
+edition = "2024"
+# Tell Cargo we have a build script that compiles the .proto
+build = "build.rs"
+
+[dependencies]
+tokio        = { version = "1", features = ["full"] }
+tokio-socks  = "0.5"
+prost        = "0.12"
+prost-types  = "0.12"
+bytes        = "1"
+anyhow       = "1"
+k256 = { version = "0.13", features = ["ecdsa"] }
+sha2 = "0.10"
+base64 = "0.21"
+hex = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+chrono = "0.4"
+serde_json = "1.0"
+async-trait = "0.1"
+
+[build-dependencies]
+prost-build  = "0.12"
+
+[[bin]]
+name = "probe"
+path = "src/bin/probe.rs"
+
+[[bin]]
+name = "send"
+path = "src/bin/send.rs"
