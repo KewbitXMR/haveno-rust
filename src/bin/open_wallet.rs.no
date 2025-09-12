@@ -1,0 +1,123 @@
+use std::{fs, io};
+use sha3::{Digest, Keccak256};
+use chacha20::cipher::{KeyIvInit, StreamCipher};
+use chacha20::ChaCha20;
+use serde_json::Value;
+use haveno_basic_bootstrap::monero::chacha8;
+
+const IV_LENGTH: usize = 12;  // 96-bit for ChaCha20-IETF
+const SALT_LENGTH: usize = 32;
+
+fn derive_keccak_key(password: &str, salt: &[u8]) -> [u8; 32] {
+    let mut hasher = Keccak256::new();
+    hasher.update(password.as_bytes());
+    hasher.update(salt);
+    let result = hasher.finalize();
+    let mut key = [0u8; 32];
+    key.copy_from_slice(&result[..32]);
+    key
+}
+
+fn decrypt_wallet(encrypted: &[u8], key: &[u8], iv: &[u8]) -> Vec<u8> {
+    let mut cipher = ChaCha20::new_from_slices(key, iv).expect("Invalid key/iv");
+    let mut decrypted = encrypted.to_vec();
+    cipher.apply_keystream(&mut decrypted);
+    decrypted
+}
+
+fn read_varint(buf: &[u8]) -> (u64, usize) {
+    let mut result = 0u64;
+    let mut shift = 0;
+    for (i, &byte) in buf.iter().enumerate() {
+        result |= ((byte & 0x7F) as u64) << shift;
+        shift += 7;
+        if byte & 0x80 == 0 {
+            return (result, i + 1);
+        }
+    }
+    panic!("Invalid varint encoding");
+}
+
+fn main() -> io::Result<()> {
+    // Load raw .keys file
+    let wallet_data = fs::read("burger/burger.keys")?;
+
+    // Parse varint (total blob length)
+    let (blob_len, varint_len) = read_varint(&wallet_data);
+    let version_offset = varint_len;
+    let version = u32::from_le_bytes(wallet_data[version_offset..version_offset + 4].try_into().unwrap());
+
+    println!("🧠 Wallet version: {}", version);
+    let salt_offset = version_offset + 4;
+    let salt = &wallet_data[salt_offset..salt_offset + SALT_LENGTH];
+    let iv = &wallet_data[salt_offset + SALT_LENGTH..salt_offset + SALT_LENGTH + IV_LENGTH];
+    let encrypted_blob = &wallet_data[salt_offset + SALT_LENGTH + IV_LENGTH..];
+
+    println!("Raw header: {:02x?}", &wallet_data[..16]);
+
+    println!("🔐 Using salt: {:02x?}", salt);
+    println!("🔑 Using IV: {:02x?}", iv);
+
+    // Get password from user
+    println!("Enter wallet password:");
+    let mut password = String::new();
+    io::stdin().read_line(&mut password)?;
+    let password = password.trim();
+
+    // Derive key
+    let key = derive_keccak_key(password, salt);
+
+    // Decrypt
+    let decrypted = decrypt_wallet(encrypted_blob, &key, iv);
+
+    println!("Decrypted (hex):");
+    for (i, chunk) in decrypted.chunks(16).enumerate().take(16) {
+        print!("{:04x}: ", i * 16);
+        for byte in chunk {
+            print!("{:02x} ", byte);
+        }
+        println!();
+    }
+
+    // Try to parse as JSON
+    if let Ok(json_str) = std::str::from_utf8(&decrypted) {
+        println!("\n✅ Decrypted data looks like JSON:");
+        println!("{}", &json_str[..json_str.len().min(256)]);
+
+        if let Ok(json) = serde_json::from_str::<Value>(json_str) {
+            if let Some(key_data) = json.get("key_data") {
+                println!("🧬 Found key_data field!");
+                println!("Length: {}", key_data.as_str().unwrap_or("").len());
+            }
+        } else {
+            println!("⚠️ Valid UTF-8, but not valid JSON.");
+        }
+    } else {
+        println!("\n❌ Decrypted data is not valid UTF-8.");
+        println!("🔁 Trying ChaCha8 fallback...");
+
+        let chacha8_iv = iv[..8].try_into().expect("Invalid IV length for ChaCha8");
+        let chacha8_key = key;
+
+        let decrypted_chacha8 = chacha8::chacha8_monero(
+            &chacha8_key,
+            &chacha8_iv,
+            encrypted_blob
+        );
+
+        if let Ok(json_str) = std::str::from_utf8(&decrypted_chacha8) {
+            println!("✅ ChaCha8 gave valid UTF-8:");
+            println!("{}", &json_str[..json_str.len().min(256)]);
+
+            if let Ok(json) = serde_json::from_str::<Value>(json_str) {
+                if let Some(key_data) = json.get("key_data") {
+                    println!("🧬 Found key_data field in ChaCha8 fallback!");
+                }
+            }
+        } else {
+            println!("❌ ChaCha8 also gave non-UTF-8. Likely raw binary format.");
+        }
+    }
+
+    Ok(())
+}

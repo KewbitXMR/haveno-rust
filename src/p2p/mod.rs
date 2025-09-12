@@ -1,6 +1,7 @@
 mod listener;
 pub mod router;
 pub mod handlers;
+pub mod onion_identity;
 mod context;
 
 use anyhow::Result;

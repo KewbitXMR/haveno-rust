@@ -1,0 +1,1 @@
+// Deliverable base class for product.rs and service.rss

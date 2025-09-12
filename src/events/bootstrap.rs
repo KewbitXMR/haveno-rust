@@ -1,11 +1,12 @@
 use anyhow::Result;
 use crate::{
-    generated::io_haveno_protobuffer::{
+    generated::{self, io_haveno_protobuffer::{
         network_envelope::Message as EnvMsg,
-        NetworkEnvelope, PreliminaryGetDataRequest
-    }, messages::filter, p2p::{handlers::add_data::AddDataMessageHandler, router::P2PMessageRouter}, utils::{
+        storage_payload::Message as PayloadMessage,
+        NetworkEnvelope, PreliminaryGetDataRequest, StoragePayload
+    }}, builders::{add_data, filter}, p2p::{handlers::add_data::AddDataMessageHandler, router::P2PMessageRouter}, utils::{
         network::{
-            add_data_message, envelope::{build_envelope, recv_envelope, send_envelope}
+            ack, envelope::{build_envelope, recv_envelope, send_envelope}, updated_data
         },
         signing
     }
@@ -55,14 +56,35 @@ pub async fn run_seed_bootstrap() -> Result<()> {
         }
     }
 
-    let filter = filter::build_signed_filter().await?;
-    let add_data_msg = add_data_message::build_add_data_message(
-        filter,
-        &signing::load_signing_key().await?
-    ).await;
+    // Must now GetDataUpdateRequest
+    let get_updated_data = updated_data::build_get_updated_data().await?;
+    let update_data_network_envelope = build_envelope(EnvMsg::GetUpdatedDataRequest(get_updated_data));
+    send_envelope(&mut stream, &update_data_network_envelope).await?;
+    println!("📤 Sent GetUpdatedDataRequest");
 
-    let final_env = build_envelope(EnvMsg::AddDataMessage(add_data_msg));
-    send_envelope(&mut stream, &final_env).await?;
+    // Must now response with AckMessage before sending anything else
+    let ack_envelope = ack::build_ack().await?;
+    let ack_network_envelope = build_envelope(EnvMsg::AckMessage(ack_envelope));
+    send_envelope(&mut stream, &ack_network_envelope).await?;
+    println!("📤 Sent AckMessage");
+
+
+    // Now build and send filter object
+    let filter = filter::build_signed_filter().await?;
+
+    // Wrap it in the PayloadMessage enum
+    let payload = PayloadMessage::Filter(filter);
+
+    // Build AddDataMessage from it
+    let signed_add_data_message = add_data::build_signed_add_data_message(StoragePayload {
+        message: Some(payload),
+    }).await?;
+
+    // Wrap it in a NetworkEnvelope
+    let network_envelope = build_envelope(EnvMsg::AddDataMessage(signed_add_data_message));
+
+    // Send
+    send_envelope(&mut stream, &network_envelope).await?;
     println!("📤 Sent AddDataMessage with Filter");
 
     Ok(())

@@ -7,11 +7,7 @@ use tokio::{
     net::TcpListener,
 };
 
-mod generated {
-    include!(concat!(env!("OUT_DIR"), "/generated.rs"));
-}
-
-use generated::io_haveno_protobuffer::NetworkEnvelope;
+use haveno::generated::io_haveno_protobuffer::NetworkEnvelope;
 
 /// Read and decode a length-prefixed NetworkEnvelope
 async fn recv_envelope(mut socket: tokio::net::TcpStream) -> Result<()> {

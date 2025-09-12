@@ -1,3 +1,5 @@
+use crate::generated::io_haveno_protobuffer::{network_envelope, NetworkEnvelope};
+
 use bytes::BytesMut;
 use prost::Message;
 use anyhow::Result;
@@ -6,9 +8,8 @@ use tokio::{
     net::TcpStream,
     time::{timeout, Duration},
 };
-use crate::generated::io_haveno_protobuffer::{network_envelope, NetworkEnvelope};
 
-pub type EnvMsg = crate::generated::io_haveno_protobuffer::network_envelope::Message;
+pub type EnvMsg = network_envelope::Message;
 
 pub async fn send_envelope(stream: &mut TcpStream, env: &NetworkEnvelope) -> Result<()> {
     let mut body = Vec::new();
@@ -51,8 +52,10 @@ pub async fn recv_envelope(stream: &mut TcpStream) -> Result<Option<NetworkEnvel
 }
 
 pub fn build_envelope(message: network_envelope::Message) -> NetworkEnvelope {
+    let json = std::fs::read_to_string("config.json");
+    let config: crate::utils::config::Config = serde_json::from_str(&json.unwrap()).unwrap();
     NetworkEnvelope {
-        message_version: "0X".into(), // customize if needed
+        message_version: config.p2p_version.into(), // customize if needed
         message: Some(message),
     }.into()
 }

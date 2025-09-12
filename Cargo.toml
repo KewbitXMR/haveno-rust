@@ -1,9 +1,20 @@
 [package]
-name = "haveno_basic_bootstrap"
-version = "0.1.0"
+name = "haveno"
+version = "0.1.5"
 edition = "2024"
-# Tell Cargo we have a build script that compiles the .proto
 build = "build.rs"
+description = "Haveno - secure P2P trading software with Monero integration"
+license = "GPL-3.0-or-later"
+readme = "README.md"
+
+# Metadata about you and your project
+homepage = "https://haveno.app"
+repository = "https://git.haveno.app"
+documentation = "https://haveno.app/documentation"
+keywords = ["monero", "p2p", "exchange", "haveno"]
+categories = ["cryptography::cryptocurrencies", "network-programming"]
+
+authors = ["Kewbit <me@kewbit.org>"]
 
 [dependencies]
 tokio        = { version = "1", features = ["full"] }
@@ -20,6 +31,19 @@ serde = { version = "1.0", features = ["derive"] }
 chrono = "0.4"
 serde_json = "1.0"
 async-trait = "0.1"
+chacha20 = { version = "0.9" }
+sha3 = "0.10"
+byteorder = "1.5"
+pkcs8 = "0.10.2"
+rsa = { version = "0.9", features = ["pkcs5"] }
+openssl = { version = "0.10", features = ["vendored"] }
+uuid = { version = "1.17.0", features = ["v4"] }
+ed25519-dalek = "1"
+data-encoding = "2.3.3"
+rand = "=0.7.3"
+rand_core = "=0.5.1"
+hex-literal = "1.0.0"
+
 
 [build-dependencies]
 prost-build  = "0.12"

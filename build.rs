@@ -1,38 +1,40 @@
-use std::env;
-use std::fs;
+use std::{env, fs};
 use std::path::PathBuf;
 
 fn main() {
-    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    // Re-run the build script if any proto changes
+    println!("cargo:rerun-if-changed=proto/pb.proto");
+    println!("cargo:rerun-if-changed=proto/grpc.proto");
 
-    // This writes the prost-generated modules to disk
-    prost_build::Config::new()
-        .out_dir(&out_dir)
-        .compile_protos(
-            &["proto/pb.proto", "proto/grpc.proto"], // adjust if more files
-            &["proto"],
-        )
-        .expect("Failed to compile proto files");
+    // Where prost will output the generated .rs files
+    let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
 
-    // Wrap the output files into a single includeable mod
-    let generated_path = out_dir.join("generated.rs");
+    // Generate prost code into OUT_DIR
+    let mut cfg = prost_build::Config::new();
+    cfg.out_dir(&out_dir);
+    cfg.compile_protos(&["proto/pb.proto", "proto/grpc.proto"], &["proto"]).expect("Failed to compile proto files");
 
-    let modules = vec![
-        "io.haveno.protobuffer.rs", // match whatever the generated filename is
-    ];
+    // Discover all generated files in OUT_DIR (e.g., io.haveno.protobuffer.rs)
+    let entries = fs::read_dir(&out_dir).expect("Failed to read OUT_DIR");
+    let mut modules: Vec<(String, String)> = Vec::new();
+    for entry in entries {
+        let path = entry.expect("bad entry").path();
+        if path.extension().map(|e| e == "rs").unwrap_or(false) {
+            let fname = path.file_name().unwrap().to_string_lossy().to_string();
+            let module = fname.trim_end_matches(".rs").replace('.', "_");
+            modules.push((module, fname));
+        }
+    }
 
-    let mod_wrappers: String = modules
-        .iter()
-        .map(|filename| {
-            let module_name = filename.trim_end_matches(".rs").replace('.', "_");
-            format!(
-                "pub mod {} {{ include!(concat!(env!(\"OUT_DIR\"), \"/{}\")); }}",
-                module_name, filename
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
+    // Create a single wrapper that re-exports all generated modules
+    // This file is written to OUT_DIR and should be included from src/lib.rs
+    let wrapper_path = out_dir.join("generated.rs");
+    let mut wrapper = String::new();
+    for (module, filename) in modules {
+        wrapper.push_str(&format!(
+            "pub mod {module} {{ include!(concat!(env!(\"OUT_DIR\"), \"/{filename}\")); }}\n"
+        ));
+    }
 
-    fs::write(&generated_path, mod_wrappers)
-        .expect("Failed to write generated.rs");
+    fs::write(&wrapper_path, wrapper).expect("Failed to write generated wrapper");
 }
